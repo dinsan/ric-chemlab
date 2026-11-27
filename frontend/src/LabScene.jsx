@@ -35,7 +35,7 @@ export default function LabScene({ frameRef, init, viewMode, stir }) {
     if (!init) return;
     const el = mount.current;
     const { radius: R, height: H, max_particles: MAXP, spacing } = init;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();

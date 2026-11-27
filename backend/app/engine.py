@@ -211,8 +211,10 @@ class Lab:
         self.temp, self.target = 25.0, 25.0
         self.stir = 0.0
         self.paused = False
+        self.speed = 1.0
         self.total_reactions = 0
         self.recent = 0
+        self.history = []
 
     def info(self):
         return dict(type="init", engine=self.eng.name, radius=RADIUS, height=HEIGHT, spacing=SPACING,
@@ -229,27 +231,43 @@ class Lab:
         else:
             radius, y = 0.22, self.surface_y() + 0.25
         y = min(y, 2.2)
-        return self.eng.add(species_id, amount, 0.0, y, 0.0, radius, -0.8)
+        added = self.eng.add(species_id, amount, 0.0, y, 0.0, radius, -0.8)
+        if added:
+            self.history.append((species_id, amount))
+        return added
 
     def handle(self, msg: dict):
         t = msg.get("type")
         if t == "add":
             self.add(int(msg["species"]), int(msg.get("amount", 300)))
         elif t == "clear":
-            self.eng.clear(); self.total_reactions = 0; self.temp = self.target = 25.0
+            self.eng.clear(); self.total_reactions = 0; self.temp = self.target = 25.0; self.history = []
         elif t == "stir":
             self.stir = float(max(0, min(1, msg["value"])))
         elif t == "heat":
             self.target = float(max(5, min(90, msg["value"])))
         elif t == "pause":
             self.paused = bool(msg["value"])
+        elif t == "speed":
+            self.speed = float(max(0.25, min(3.0, msg["value"])))
+        elif t == "undo":
+            if self.history:
+                self.history.pop()
+                replay = list(self.history)
+                self.eng.clear()
+                self.history = []
+                self.total_reactions = 0
+                for sid, amount in replay:
+                    self.add(sid, amount)
 
     def tick(self):
         if self.paused:
             return
         ev = 0
-        for _ in range(self.SUBSTEPS):
-            ev += self.eng.step(self.DT, self.stir, self.temp)
+        substeps = max(1, round(self.SUBSTEPS * self.speed))
+        dt = self.DT
+        for _ in range(substeps):
+            ev += self.eng.step(dt, self.stir, self.temp)
         self.recent = ev
         self.total_reactions += ev
         heat = sum(r["heat"] for r in chem.REACTIONS) / len(chem.REACTIONS)
@@ -266,5 +284,5 @@ class Lab:
         counts = {int(k): int(v) for k, v in zip(*np.unique(sp, return_counts=True))}
         ph = chem.solution_ph(counts)
         return dict(type="stats", particles=int(self.eng.count), counts=counts, ph=ph, temp=round(self.temp, 1),
-                    target=self.target, reactions=self.total_reactions, active=self.recent, fps=round(fps, 1),
+                    target=self.target, reactions=self.total_reactions, active=self.recent, speed=self.speed, fps=round(fps, 1),
                     compression=round(float(self.eng.density_ratio()), 3))
